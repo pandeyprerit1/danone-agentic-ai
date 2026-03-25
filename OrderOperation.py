@@ -441,7 +441,7 @@ def run_agent(user_input: str, llm: ChatGroq) -> str:
 # ====================== UI ======================
 st.set_page_config(page_title="Order Agent", layout="wide")
 
-st.title("🛒 Order Search Agent")
+st.title("🛒 Danone Order Search Agent")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
