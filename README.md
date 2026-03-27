@@ -12,6 +12,15 @@ pip install -r requirements.txt
 2. Configure environment variables in `.env`:
    - Commercetools credentials (already configured)
    - Chargebee credentials: Set `CHARGEBEE_SITE` and `CHARGEBEE_API_KEY`
+   - Optional Groq/token optimization settings:
+     ```
+     GROQ_MODEL=llama-3.1-8b-instant
+     GROQ_MAX_TOKENS=400
+     GROQ_TEMPERATURE=0.1
+     AGENT_MAX_ITERATIONS=3
+     AGENT_MAX_TOOL_RESULT_CHARS=2500
+     AGENT_MAX_TOOL_LIST_ITEMS=5
+     ```
 
 ## Chargebee Configuration
 

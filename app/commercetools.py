@@ -392,10 +392,11 @@ def _create_cart_discount_only_impl(
         if cart_discount_resp.status_code in (200, 201):
             cart_discount_data = cart_discount_resp.json()
             print(f"✅ [CREATE_CART_DISCOUNT_ONLY] Created: {cart_discount_data.get('id')}")
+            cart_discount_id = cart_discount_data.get("id")
             return {
                 "success": True,
                 "cart_discount": {
-                    "id": cart_discount_data.get("id"),
+                    "id": cart_discount_id,
                     "name": cart_discount_data.get("name", {}).get("en"),
                     "type": discount_type,
                     "value": value,
@@ -404,7 +405,7 @@ def _create_cart_discount_only_impl(
                     "valid_from": cart_discount_data.get("validFrom"),
                     "valid_until": cart_discount_data.get("validUntil"),
                 },
-                "message": f"Cart discount '{name}' created and auto-applies without a discount code",
+                "message": f"Cart Discount has been created successfully with discount id {cart_discount_id}",
             }
 
         try:
