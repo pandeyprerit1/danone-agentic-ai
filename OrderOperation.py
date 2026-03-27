@@ -320,6 +320,7 @@ def _create_discount_impl(
             "cartPredicate": "1=1",  # Apply to all carts
             "target": {"type": "lineItems", "predicate": "1=1"},  # Apply to all line items
             "sortOrder": sort_order,
+            "requiresDiscountCode" : True,
             "isActive": True
         }
         
@@ -438,6 +439,105 @@ def _create_discount_impl(
     
     print(f"✅ [CREATE_DISCOUNT] Discount created successfully: {code.upper()}")
     return result
+
+
+def _create_cart_discount_only_impl(
+    name: str,
+    discount_type: str = "percentage",
+    value: float = 10.0,
+    description: Optional[str] = None,
+    valid_from: Optional[str] = None,
+    valid_until: Optional[str] = None,
+) -> Dict:
+    """Create only a cart discount in Commercetools (auto-applies, no discount code)."""
+
+    token = get_ct_token()
+    project_key = os.getenv("COMMERCETOOLS_PROJECT_KEY")
+    api_url = os.getenv("COMMERCETOOLS_API_URL")
+    cart_discount_url = f"{api_url}/{project_key}/cart-discounts"
+
+    if discount_type.lower() == "percentage":
+        discount_value = {
+            "type": "relative",
+            "permyriad": int(value * 100)
+        }
+    elif discount_type.lower() == "absolute":
+        discount_value = {
+            "type": "absolute",
+            "money": [
+                {
+                    "centAmount": int(value * 100),
+                    "currencyCode": "EUR"
+                }
+            ]
+        }
+    else:
+        return {"error": f"Unsupported discount type: {discount_type}. Use 'percentage' or 'absolute'."}
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        sort_order = str(random.randint(1, 999) / 1000)
+        cart_discount_payload = {
+            "name": {"en": name},
+            "description": {"en": description or f"Cart discount: {name}"},
+            "value": discount_value,
+            "cartPredicate": "1=1",
+            "target": {"type": "lineItems", "predicate": "1=1"},
+            "sortOrder": sort_order,
+            "requiresDiscountCode": False,
+            "isActive": True
+        }
+
+        if valid_from:
+            cart_discount_payload["validFrom"] = valid_from
+        if valid_until:
+            cart_discount_payload["validUntil"] = valid_until
+
+        print(f"\n💰 [CREATE_CART_DISCOUNT_ONLY] Creating cart discount (attempt {attempt + 1})...")
+        print(f"💰 [CREATE_CART_DISCOUNT_ONLY] URL: {cart_discount_url}")
+        print(f"💰 [CREATE_CART_DISCOUNT_ONLY] Payload: {json.dumps(cart_discount_payload, indent=2)}")
+
+        cart_discount_resp = requests.post(
+            cart_discount_url,
+            json=cart_discount_payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        )
+
+        print(f"💰 [CREATE_CART_DISCOUNT_ONLY] Status: {cart_discount_resp.status_code}")
+
+        if cart_discount_resp.status_code in (200, 201):
+            cart_discount_data = cart_discount_resp.json()
+            print(f"✅ [CREATE_CART_DISCOUNT_ONLY] Created: {cart_discount_data.get('id')}")
+            return {
+                "success": True,
+                "cart_discount": {
+                    "id": cart_discount_data.get("id"),
+                    "name": cart_discount_data.get("name", {}).get("en"),
+                    "type": discount_type,
+                    "value": value,
+                    "is_active": cart_discount_data.get("isActive"),
+                    "requires_discount_code": cart_discount_data.get("requiresDiscountCode"),
+                    "valid_from": cart_discount_data.get("validFrom"),
+                    "valid_until": cart_discount_data.get("validUntil")
+                },
+                "message": f"Cart discount '{name}' created and auto-applies without a discount code"
+            }
+
+        try:
+            error_data = cart_discount_resp.json()
+            error_message = error_data.get("message", "").lower()
+            if "duplicate value" in error_message and "sortorder" in error_message:
+                print(f"⚠️ [CREATE_CART_DISCOUNT_ONLY] Duplicate sortOrder '{sort_order}', retrying...")
+                continue
+        except json.JSONDecodeError:
+            pass
+
+        return {"error": f"Failed to create cart discount: {cart_discount_resp.status_code} - {cart_discount_resp.text}"}
+
+    return {"error": "Failed to create cart discount after 3 attempts due to duplicate sortOrder"}
 
 
 def _get_order(order_id: str) -> Dict:
@@ -882,6 +982,26 @@ def create_discount(
         max_uses=max_uses
     )
 
+
+@tool
+def create_cart_discount_only(
+    name: str,
+    discount_type: str = "percentage",
+    value: float = 10.0,
+    description: Optional[str] = None,
+    valid_from: Optional[str] = None,
+    valid_until: Optional[str] = None
+) -> Dict:
+    """Create only a cart discount that auto-applies (no discount code)."""
+    return _create_cart_discount_only_impl(
+        name=name,
+        discount_type=discount_type,
+        value=value,
+        description=description,
+        valid_from=valid_from,
+        valid_until=valid_until
+    )
+
 # Chargebee Tools
 @tool
 def search_all_invoices(
@@ -929,6 +1049,7 @@ def run_agent(user_input: str, llm: ChatGroq) -> str:
         "search_orders": _search_orders_impl,
         "search_orders_by_chargebee_invoice": _search_orders_by_chargebee_invoice_impl,
         "create_discount": _create_discount_impl,
+        "create_cart_discount_only": _create_cart_discount_only_impl,
         "process_orders": _process_orders_impl,
         "search_all_invoices": _search_all_invoices_impl,
         "search_invoices_by_email": _search_invoices_by_email_impl,
@@ -936,7 +1057,7 @@ def run_agent(user_input: str, llm: ChatGroq) -> str:
     }
     
     # Bind tools to LLM
-    llm_with_tools = llm.bind_tools([search_orders, search_orders_by_chargebee_invoice, create_discount, process_orders, search_all_invoices, search_invoices_by_email, get_invoice_detail])
+    llm_with_tools = llm.bind_tools([search_orders, search_orders_by_chargebee_invoice, create_discount, create_cart_discount_only, process_orders, search_all_invoices, search_invoices_by_email, get_invoice_detail])
     
     messages = [HumanMessage(content=user_input)]
     
